@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request
+from flask import Flask, request, jsonify
 import numpy as np
 import numpy.linalg as lin 
 import re
@@ -175,10 +175,14 @@ def solveEquation(equation):
 
     return (join(lcompounds, ' + '), " -> ", join(rcompounds, ' + '))
 
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    if request.method == 'POST':
-        equation = request.form['equation']
-        lhs, arrow, rhs = solve_equation(equation)
-        return render_template('result.html', lhs=lhs, arrow=arrow, rhs=rhs)
-    return render_template('index.html')
+@app.route('/solve', methods=['POST'])
+def solve():
+    data = request.get_json()
+    equation = data.get('equation')
+    if not equation:
+        return jsonify({'error': 'No equation provided'}), 400
+    try:
+        result = solveEquation(equation)
+        return jsonify({'result': result}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
