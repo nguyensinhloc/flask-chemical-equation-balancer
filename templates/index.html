@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Chemical Equation Balancer</title>
+</head>
+<body>
+    <h1>Chemical Equation Balancer</h1>
+    <form method="post">
+        <input type="text" name="equation" placeholder="Enter chemical equation">
+        <input type="submit" value="Balance">
+    </form>
+    {% if balanced %}
+        <h2>Balanced Equation:</h2>
+        <p>{{ balanced }}</p>
+    {% endif %}
+</body>
+</html>
