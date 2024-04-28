@@ -2,17 +2,15 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Chemical Equation Balancer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chemical Equation Solver</title>
 </head>
 <body>
-    <h1>Chemical Equation Balancer</h1>
-    <form method="post">
-        <input type="text" name="equation" placeholder="Enter chemical equation">
-        <input type="submit" value="Balance">
+    <h1>Chemical Equation Solver</h1>
+    <form action="/" method="post">
+        <label for="equation">Enter your chemical equation:</label>
+        <input type="text" id="equation" name="equation" required>
+        <button type="submit">Solve</button>
     </form>
-    {% if balanced %}
-        <h2>Balanced Equation:</h2>
-        <p>{{ balanced }}</p>
-    {% endif %}
 </body>
 </html>
