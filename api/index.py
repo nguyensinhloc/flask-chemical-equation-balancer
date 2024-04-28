@@ -1,66 +1,184 @@
-from flask import Flask, request, render_template
+from flask import Flask, render_template, request
 import numpy as np
-from scipy.optimize import nnls
+import numpy.linalg as lin 
+import re
+import sympy
+import itertools
 
 app = Flask(__name__)
 
-# Helper function to parse the chemical equation
-def parse_equation(equation):
-    # Split the equation into reactants and products
-    reactants, products = equation.split('->')
-    reactants = reactants.split('+')
-    products = products.split('+')
+def join(l, sep):
+  
+    out_str = ''
+    for i, el in enumerate(l):
+        out_str += '{}{}'.format(el, sep)
+    return out_str[:-len(sep)]
 
-    # Get a list of all unique elements in the equation
-    elements = set(''.join(reactants + products))
-    return reactants, products, elements
+def removeNums(l):
+   return [value for value in l if not value.isdigit()]
 
-# Function to balance chemical equations
-def balance_equation(equation):
-    try:
-        reactants, products, elements = parse_equation(equation)
+def removeBlanks(l):
+   return [value for value in l if value != '']
+ 
+def findalphs(string, removenums=False, removeblanks=False):
+    if len(string) == 1:
+        return list(string)
 
-        # Create a matrix to represent the atoms on each side of the equation
-        atom_matrix = []
-        for element in elements:
-            atom_count = []
-            # Count the atoms in reactants
-            for compound in reactants:
-                atom_count.append(compound.count(element))
-            # Count the atoms in products (negated)
-            for compound in products:
-                atom_count.append(-compound.count(element))
-            atom_matrix.append(atom_count)
+    separates = re.split('(\d+)', string)
+    
+    if removenums == True:
+        separates = removeNums(separates)
+    if removeblanks == True:
+        separates = removeBlanks(separates)
+    
+    return separates
 
-        # Convert the list to a NumPy array
-        atom_matrix = np.array(atom_matrix, dtype=float)
 
-        # Use non-negative least squares to solve the system
-        # The result should be close to zero for a balanced equation
-        coefficients, _ = nnls(atom_matrix.T, np.zeros(len(elements)))
+def solveEquation(equation):
 
-        # Find the smallest integer that can be multiplied to get whole numbers
-        multiplier = np.lcm.reduce(np.array(coefficients * 1000000, dtype=int))
-        balanced_coefficients = (coefficients * multiplier).astype(int)
+    splitter = equation.split(" -> ")
+    lhs = splitter[0]
+    rhs = splitter[1]
 
-        # Construct the balanced equation
-        balanced_equation = ' + '.join([f'{coef} {comp}' for coef, comp in zip(balanced_coefficients[:len(reactants)], reactants)])
-        balanced_equation += ' -> '
-        balanced_equation += ' + '.join([f'{coef} {comp}' for coef, comp in zip(balanced_coefficients[len(reactants):], products)])
+    lsplits = lhs.split(" + ")
+    ltermnum = len(lsplits)
 
-        return balanced_equation
-    except Exception as e:
-        # Handle any exceptions that occur during the balancing process
-        return f"An error occurred while balancing the equation: {e}"
+    rsplits = rhs.split(" + ")
+    rtermnum = len(rsplits)
+
+    vars = np.zeros((1, (rtermnum + ltermnum)))
+
+    allelements = []
+
+    #find how many elements there are
+    for term in lsplits:
+        alphs = findalphs(term, removeblanks=True, removenums=True)
+        allelements = allelements + alphs
+    
+    uniqueelements = list(set(allelements))
+    elementdict = {key: val for val, key in enumerate(uniqueelements)}
+
+    elementamt = len(uniqueelements)
+    
+    if True:
+        lhsvectors = []
+        rhsvectors = [] 
+
+        for term in lsplits:
+
+            vec = np.zeros((elementamt, 1))
+
+            combos = findalphs(term, removeblanks=True, removenums=False)
+
+            termelems = [] 
+            for i in range(0, len(combos), 2):
+                currentelem = combos[i]
+                currentamt = int(combos[i + 1])
+                termelems.append((currentelem, currentamt))
+
+            for combo in termelems:
+                vec[elementdict[combo[0]]] = combo[1]
+
+            lhsvectors.append(vec)
+
+        # now, rhs
+        for term in rsplits:
+
+            vec = np.zeros((elementamt, 1))
+            combos = findalphs(term, removeblanks=True, removenums=False)
+            termelems = [] 
+
+            for i in range(0, len(combos), 2):
+                currentelem = combos[i]
+                currentamt = int(combos[i + 1])
+                termelems.append((currentelem, currentamt))
+                
+            for combo in termelems:
+                vec[elementdict[combo[0]]] = combo[1]
+
+            rhsvectors.append((-1*vec))
+            
+
+        
+        from sympy import Matrix
+        A = Matrix( (np.concatenate((lhsvectors + rhsvectors), axis=1)) )
+
+        b = Matrix( np.zeros((np.shape(A)[0], 1)) )
+        
+        x = A.nullspace()
+        N  = ((np.array(x)).transpose().astype('float'))
+        print(N)
+
+        varnum = np.shape(N)[1]
+
+        trynums = list(range(1, 20))
+        alltries = trynums*varnum
+
+        combinations = list(itertools.combinations(alltries, varnum))
+        
+        candidateVectors = []
+        for vars in combinations:
+            isDec = None
+            x = np.asarray(vars).reshape((varnum, 1))
+            vector = np.dot(N, x)
+
+            for item in vector:
+                item = item[0]
+
+                if not (item).is_integer():
+                    isDec = True
+                    break
+            
+            if isDec == True:
+                continue 
+            else:
+                candidateVectors.append(vector)
+
+        
+        bestvector = [lin.norm(candidateVectors[0]), candidateVectors[0]]
+        for vec in candidateVectors:
+            norm = lin.norm(vec)
+
+            if norm < bestvector[0]:
+                bestvector[0] = norm
+                bestvector[1] = vec
+    
+
+    coefficients = (bestvector[1].flatten().astype('int32')).tolist()
+
+
+    valinbest = 0
+
+    lsplitsstatic = lsplits.copy()
+
+    for term in lsplitsstatic:
+        insertterm = lsplits.index(term)
+        coefficient =  int(str(coefficients[valinbest]))
+        lsplits.insert(insertterm, coefficient)
+        valinbest += 1
+    
+    rsplitsstatic = rsplits.copy()
+    for term in rsplitsstatic:
+        insertterm = rsplits.index(term)
+        coefficient =  int(str(coefficients[valinbest]))
+        rsplits.insert(insertterm, coefficient)
+        valinbest += 1
+    
+
+    lcompounds = []
+    for compound in range(0, len(lsplits), 2):
+        lcompounds.append(str(lsplits[compound]) + " " + str(lsplits[compound + 1]))
+
+    rcompounds = []
+    for compound in range(0, len(rsplits), 2):
+        rcompounds.append(str(rsplits[compound]) + " " + str(rsplits[compound + 1]))
+
+    return (join(lcompounds, ' + '), " -> ", join(rcompounds, ' + '))
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    try:
-        if request.method == 'POST':
-            equation = request.form['equation']
-            balanced = balance_equation(equation)
-            return render_template('index.html', balanced=balanced)
-        return render_template('index.html', balanced=None)
-    except Exception as e:
-        # Handle any exceptions that occur during the request handling
-        return render_template('error.html', error_message=str(e))
+    if request.method == 'POST':
+        equation = request.form['equation']
+        lhs, arrow, rhs = solve_equation(equation)
+        return render_template('result.html', lhs=lhs, arrow=arrow, rhs=rhs)
+    return render_template('index.html')
