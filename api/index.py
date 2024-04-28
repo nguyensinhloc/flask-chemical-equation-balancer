@@ -1,114 +1,58 @@
-import base64
-import io
-
-import matplotlib.pyplot as plt
-from chempy import balance_stoichiometry
-from flask import Flask, request, render_template_string
+from flask import Flask, request, render_template
+import numpy as np
+from scipy.optimize import nnls
 
 app = Flask(__name__)
 
-# Define a function to balance a chemical equation
-def balance_chemical_equation(reactants, products):
-    if not reactants or not products:
-        return "Error: At least one reactant and one product needed. Please ensure all reactants and products are correctly entered."
-    try:
-        # Balance the stoichiometry
-        balanced_reactants, balanced_products = balance_stoichiometry(reactants, products)
-        # Return the balanced equation
-        return balanced_reactants, balanced_products
-    except Exception as e:
-        # Handle the case where reactants or products are missing
-        return f"Error: {str(e)}. Please ensure all reactants and products are correctly entered."
+# Helper function to parse the chemical equation
+def parse_equation(equation):
+    # Split the equation into reactants and products
+    reactants, products = equation.split('->')
+    reactants = reactants.split('+')
+    products = products.split('+')
 
-# Define a function to visualize the chemical equation
-def visualize_chemical_equation(balanced_reactants, balanced_products):
-    # Combine the reactants and products
-    all_chemicals = list(balanced_reactants.keys()) + list(balanced_products.keys())
-    stoichiometric_coefficients = list(balanced_reactants.values()) + list(balanced_products.values())
+    # Get a list of all unique elements in the equation
+    elements = set(''.join(reactants + products))
+    return reactants, products, elements
 
-    # Create a bar chart
-    plt.bar(all_chemicals, stoichiometric_coefficients, color='blue')
-    plt.xlabel('Chemicals')
-    plt.ylabel('Stoichiometric Coefficients')
-    plt.title('Visualization of Chemical Reaction Stoichiometry')
+# Function to balance chemical equations
+def balance_equation(equation):
+    reactants, products, elements = parse_equation(equation)
 
-    # Save the chart as a PNG image
-    img = io.BytesIO()
-    plt.savefig(img, format='png')
-    img.seek(0)
-    plot_url = base64.b64encode(img.getvalue()).decode()
+    # Create a matrix to represent the atoms on each side of the equation
+    atom_matrix = []
+    for element in elements:
+        atom_count = []
+        # Count the atoms in reactants
+        for compound in reactants:
+            atom_count.append(compound.count(element))
+        # Count the atoms in products (negated)
+        for compound in products:
+            atom_count.append(-compound.count(element))
+        atom_matrix.append(atom_count)
 
-    return plot_url
+    # Convert the list to a NumPy array
+    atom_matrix = np.array(atom_matrix, dtype=float)
+
+    # Use non-negative least squares to solve the system
+    # The result should be close to zero for a balanced equation
+    coefficients, _ = nnls(atom_matrix.T, np.zeros(len(elements)))
+
+    # Find the smallest integer that can be multiplied to get whole numbers
+    multiplier = np.lcm.reduce(np.array(coefficients * 1000000, dtype=int))
+    balanced_coefficients = (coefficients * multiplier).astype(int)
+
+    # Construct the balanced equation
+    balanced_equation = ' + '.join([f'{coef} {comp}' for coef, comp in zip(balanced_coefficients[:len(reactants)], reactants)])
+    balanced_equation += ' -> '
+    balanced_equation += ' + '.join([f'{coef} {comp}' for coef, comp in zip(balanced_coefficients[len(reactants):], products)])
+
+    return balanced_equation
 
 @app.route('/', methods=['GET', 'POST'])
-def balance_equation():
+def index():
     if request.method == 'POST':
-        reactants = set(request.form['reactants'].split())
-        products = set(request.form['products'].split())
-        result = balance_chemical_equation(reactants, products)
-        if isinstance(result, tuple):
-            balanced_reactants, balanced_products = result
-            visualization = visualize_chemical_equation(balanced_reactants, balanced_products)
-            return render_template_string("""
-                <!DOCTYPE html>
-                <html>
-                  <head>
-                    <title>Chemical Equation Balancer</title>
-                  </head>
-                  <body>
-                    <h1>Chemical Equation Balancer</h1>
-                    <form action="" method="post">
-                      <label for="reactants">Reactants:</label>
-                      <input type="text" id="reactants" name="reactants"><br><br>
-                      <label for="products">Products:</label>
-                      <input type="text" id="products" name="products"><br><br>
-                      <input type="submit" value="Balance Equation">
-                    </form>
-                    {% if balanced_reactants %}
-                      <h2>Balanced Reactants: {{ balanced_reactants }}</h2>
-                      <h2>Balanced Products: {{ balanced_products }}</h2>
-                      <img src="data:image/png;base64,{{ visualization }}" alt="Chemical Equation Stoichiometry">
-                    {% elif error %}
-                      <p>{{ error }}</p>
-                    {% endif %}
-                  </body>
-                </html>
-            """, balanced_reactants=balanced_reactants, balanced_products=balanced_products, visualization=visualization)
-        else:
-            return render_template_string("""
-                <!DOCTYPE html>
-                <html>
-                  <head>
-                    <title>Chemical Equation Balancer</title>
-                  </head>
-                  <body>
-                    <h1>Chemical Equation Balancer</h1>
-                    <form action="" method="post">
-                      <label for="reactants">Reactants:</label>
-                      <input type="text" id="reactants" name="reactants"><br><br>
-                      <label for="products">Products:</label>
-                      <input type="text" id="products" name="products"><br><br>
-                      <input type="submit" value="Balance Equation">
-                    </form>
-                    <p>{{ error }}</p>
-                  </body>
-                </html>
-            """, error=result)
-    return render_template_string("""
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Chemical Equation Balancer</title>
-          </head>
-          <body>
-            <h1>Chemical Equation Balancer</h1>
-            <form action="" method="post">
-              <label for="reactants">Reactants:</label>
-              <input type="text" id="reactants" name="reactants"><br><br>
-              <label for="products">Products:</label>
-              <input type="text" id="products" name="products"><br><br>
-              <input type="submit" value="Balance Equation">
-            </form>
-          </body>
-        </html>
-    """)
+        equation = request.form['equation']
+        balanced = balance_equation(equation)
+        return render_template('index.html', balanced=balanced)
+    return render_template('index.html', balanced=None)
