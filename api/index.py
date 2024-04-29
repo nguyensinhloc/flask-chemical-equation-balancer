@@ -29,7 +29,10 @@ def balance_equation():
     result = None
     if request.method == 'POST':
         equation_input = request.form['equation']
-        result = balance_chemical_equation(equation_input)
+        try:
+            result = balance_chemical_equation(equation_input)
+        except Exception as e:
+            result = "Error: " + str(e)
     return render_template_string(HTML_PAGE, result=result)
 
 def balance_chemical_equation(equation):
@@ -68,10 +71,7 @@ def balance_chemical_equation(equation):
         return "Cannot balance the equation."
 
     # Use the first positive solution
-    if positive_solution:
-        solution = positive_solution[0]
-    else:
-        return "Cannot balance the equation."
+    solution = positive_solution[0]
 
     # Generate the balanced equation
     balanced_left = ' + '.join('{}{}'.format(int(solution[coeff]), compound) for coeff, compound in zip(coefficients[:len(left)], left))
