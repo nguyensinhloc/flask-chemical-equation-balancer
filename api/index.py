@@ -1,188 +1,69 @@
-from flask import Flask, request, jsonify
-import numpy as np
-import numpy.linalg as lin 
-import re
-import sympy
-import itertools
+from flask import Flask, request, render_template_string
+from sympy import Eq, symbols, solve
 
 app = Flask(__name__)
 
-def join(l, sep):
-  
-    out_str = ''
-    for i, el in enumerate(l):
-        out_str += '{}{}'.format(el, sep)
-    return out_str[:-len(sep)]
+HTML_PAGE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chemical Equation Balancer</title>
+</head>
+<body>
+    <h1>Chemical Equation Balancer</h1>
+    <form method="POST">
+        <input type="text" name="equation" placeholder="H2 + O2 = H2O" required>
+        <button type="submit">Balance</button>
+    </form>
+    {% if result %}
+        <h2>Result: {{ result }}</h2>
+    {% endif %}
+</body>
+</html>
+"""
 
-def removeNums(l):
-   return [value for value in l if not value.isdigit()]
+@app.route('/', methods=['GET', 'POST'])
+def balance_equation():
+    result = None
+    if request.method == 'POST':
+        equation_input = request.form['equation']
+        result = balance_chemical_equation(equation_input)
+    return render_template_string(HTML_PAGE, result=result)
 
-def removeBlanks(l):
-   return [value for value in l if value != '']
- 
-def findalphs(string, removenums=False, removeblanks=False):
-    if len(string) == 1:
-        return list(string)
+def balance_chemical_equation(equation):
+    # Split the equation into left and right parts
+    left, right = equation.split('=')
+    left = left.split('+')
+    right = right.split('+')
 
-    separates = re.split('(\d+)', string)
-    
-    if removenums == True:
-        separates = removeNums(separates)
-    if removeblanks == True:
-        separates = removeBlanks(separates)
-    
-    return separates
+    # Extract all unique elements
+    elements = set(''.join(filter(str.isalpha, char)) for char in equation)
 
+    # Create symbols for coefficients
+    coefficients = symbols(' '.join(['a{}'.format(i) for i in range(len(left) + len(right))]))
 
-def solveEquation(equation):
+    # Create equations based on the element counts
+    equations = []
+    for element in elements:
+        left_count = sum(coeff * compound.count(element) for coeff, compound in zip(coefficients[:len(left)], left))
+        right_count = sum(coeff * compound.count(element) for coeff, compound in zip(coefficients[len(left):], right))
+        equations.append(Eq(left_count, right_count))
 
-    splitter = equation.split(" -> ")
-    lhs = splitter[0]
-    rhs = splitter[1]
+    # Solve the equations
+    solution = solve(equations, coefficients)
 
-    lsplits = lhs.split(" + ")
-    ltermnum = len(lsplits)
+    # If no solution, return the original equation
+    if not solution:
+        return "Cannot balance the equation."
 
-    rsplits = rhs.split(" + ")
-    rtermnum = len(rsplits)
+    # Generate the balanced equation
+    balanced_left = ' + '.join('{}{}'.format(solution[coeff], compound) for coeff, compound in zip(coefficients[:len(left)], left))
+    balanced_right = ' + '.join('{}{}'.format(solution[coeff], compound) for coeff, compound in zip(coefficients[len(left):], right))
+    balanced_equation = '{} = {}'.format(balanced_left, balanced_right)
 
-    vars = np.zeros((1, (rtermnum + ltermnum)))
+    return balanced_equation
 
-    allelements = []
-
-    #find how many elements there are
-    for term in lsplits:
-        alphs = findalphs(term, removeblanks=True, removenums=True)
-        allelements = allelements + alphs
-    
-    uniqueelements = list(set(allelements))
-    elementdict = {key: val for val, key in enumerate(uniqueelements)}
-
-    elementamt = len(uniqueelements)
-    
-    if True:
-        lhsvectors = []
-        rhsvectors = [] 
-
-        for term in lsplits:
-
-            vec = np.zeros((elementamt, 1))
-
-            combos = findalphs(term, removeblanks=True, removenums=False)
-
-            termelems = [] 
-            for i in range(0, len(combos), 2):
-                currentelem = combos[i]
-                currentamt = int(combos[i + 1])
-                termelems.append((currentelem, currentamt))
-
-            for combo in termelems:
-                vec[elementdict[combo[0]]] = combo[1]
-
-            lhsvectors.append(vec)
-
-        # now, rhs
-        for term in rsplits:
-
-            vec = np.zeros((elementamt, 1))
-            combos = findalphs(term, removeblanks=True, removenums=False)
-            termelems = [] 
-
-            for i in range(0, len(combos), 2):
-                currentelem = combos[i]
-                currentamt = int(combos[i + 1])
-                termelems.append((currentelem, currentamt))
-                
-            for combo in termelems:
-                vec[elementdict[combo[0]]] = combo[1]
-
-            rhsvectors.append((-1*vec))
-            
-
-        
-        from sympy import Matrix
-        A = Matrix( (np.concatenate((lhsvectors + rhsvectors), axis=1)) )
-
-        b = Matrix( np.zeros((np.shape(A)[0], 1)) )
-        
-        x = A.nullspace()
-        N  = ((np.array(x)).transpose().astype('float'))
-        print(N)
-
-        varnum = np.shape(N)[1]
-
-        trynums = list(range(1, 20))
-        alltries = trynums*varnum
-
-        combinations = list(itertools.combinations(alltries, varnum))
-        
-        candidateVectors = []
-        for vars in combinations:
-            isDec = None
-            x = np.asarray(vars).reshape((varnum, 1))
-            vector = np.dot(N, x)
-
-            for item in vector:
-                item = item[0]
-
-                if not (item).is_integer():
-                    isDec = True
-                    break
-            
-            if isDec == True:
-                continue 
-            else:
-                candidateVectors.append(vector)
-
-        
-        bestvector = [lin.norm(candidateVectors[0]), candidateVectors[0]]
-        for vec in candidateVectors:
-            norm = lin.norm(vec)
-
-            if norm < bestvector[0]:
-                bestvector[0] = norm
-                bestvector[1] = vec
-    
-
-    coefficients = (bestvector[1].flatten().astype('int32')).tolist()
-
-
-    valinbest = 0
-
-    lsplitsstatic = lsplits.copy()
-
-    for term in lsplitsstatic:
-        insertterm = lsplits.index(term)
-        coefficient =  int(str(coefficients[valinbest]))
-        lsplits.insert(insertterm, coefficient)
-        valinbest += 1
-    
-    rsplitsstatic = rsplits.copy()
-    for term in rsplitsstatic:
-        insertterm = rsplits.index(term)
-        coefficient =  int(str(coefficients[valinbest]))
-        rsplits.insert(insertterm, coefficient)
-        valinbest += 1
-    
-
-    lcompounds = []
-    for compound in range(0, len(lsplits), 2):
-        lcompounds.append(str(lsplits[compound]) + " " + str(lsplits[compound + 1]))
-
-    rcompounds = []
-    for compound in range(0, len(rsplits), 2):
-        rcompounds.append(str(rsplits[compound]) + " " + str(rsplits[compound + 1]))
-
-    return (join(lcompounds, ' + '), " -> ", join(rcompounds, ' + '))
-
-@app.route('/solve', methods=['POST'])
-def solve():
-    data = request.get_json()
-    equation = data.get('equation')
-    if not equation:
-        return jsonify({'error': 'No equation provided'}), 400
-    try:
-        result = solveEquation(equation)
-        return jsonify({'result': result}), 200
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+if __name__ == '__main__':
+    app.run()
