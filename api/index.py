@@ -52,11 +52,13 @@ def balance_chemical_equation(equation):
     elements = set(re.findall(r'([A-Z][a-z]?)(\d*)', equation))
     coefficients = {}
     for compound in left + right:
-        for el, count in re.findall(r'([A-Z][a-z]?)(\d*)', compound):
-            if el not in coefficients:
-                coefficients[el] = int(count or 1)
-            else:
-                coefficients[el] += int(count or 1)
+        match = re.match(r'(\d+)?([A-Za-z]+)', compound)
+        coeff, elem = match.groups()
+        coeff = int(coeff or 1)
+        if elem not in coefficients:
+            coefficients[elem] = coeff
+        else:
+            coefficients[elem] += coeff
 
     # Create symbols for coefficients with positive integer assumption
     coefficients_symbols = symbols(' '.join(['a{}'.format(i) for i in range(len(left) + len(right))]), positive=True)
