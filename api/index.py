@@ -45,24 +45,16 @@ def balance_chemical_equation(equation):
     right = right.split('+')
 
     # Extract all unique elements
-    elements = set(re.findall(r'[A-Z][a-z]*', equation))
+    elements = set(re.findall(r'([A-Z][a-z]?)(\d*)', equation))
 
     # Create symbols for coefficients with positive integer assumption
     coefficients = symbols(' '.join(['a{}'.format(i) for i in range(len(left) + len(right))]), positive=True)
 
     # Create equations based on the element counts
     equations = []
-    for element in elements:
-        left_count = 0
-        right_count = 0
-        for i, compound in enumerate(left):
-            count = compound.count(element)
-            if count > 0:
-                left_count += coefficients[i] * count
-        for i, compound in enumerate(right):
-            count = compound.count(element)
-            if count > 0:
-                right_count += coefficients[len(left) + i] * count
+    for element, _ in elements:
+        left_count = sum(coefficients[i] * int(count or 1) for i, compound in enumerate(left) for el, count in re.findall(r'([A-Z][a-z]?)(\d*)', compound) if el == element)
+        right_count = sum(coefficients[len(left) + i] * int(count or 1) for i, compound in enumerate(right) for el, count in re.findall(r'([A-Z][a-z]?)(\d*)', compound) if el == element)
         equations.append(Eq(left_count, right_count))
 
     # Solve the equations
@@ -74,11 +66,12 @@ def balance_chemical_equation(equation):
     solution = solutions[0]
 
     # Generate the balanced equation
-    balanced_left = ' + '.join('{}{}'.format(int(solution[coeff]) if int(solution[coeff])!= 1 else '', compound) for coeff, compound in zip(coefficients[:len(left)], left))
-    balanced_right = ' + '.join('{}{}'.format(int(solution[coeff]) if int(solution[coeff])!= 1 else '', compound) for coeff, compound in zip(coefficients[len(left):], right))
+    balanced_left = ' + '.join('{}{}'.format(solution[coeff] if solution[coeff] != 1 else '', compound) for coeff, compound in zip(coefficients[:len(left)], left))
+    balanced_right = ' + '.join('{}{}'.format(solution[coeff] if solution[coeff] != 1 else '', compound) for coeff, compound in zip(coefficients[len(left):], right))
     balanced_equation = '{} = {}'.format(balanced_left, balanced_right)
 
     return balanced_equation
+
 
 if __name__ == '__main__':
     app.run()
