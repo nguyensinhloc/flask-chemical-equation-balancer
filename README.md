@@ -6,7 +6,7 @@ This Flask application allows you to balance chemical equations effortlessly. Si
 
 ## Demo
 
-https://flask-python-template.vercel.app/
+[https://flask-python-template.vercel.app/](https://flask-chemical-equation-balancer.vercel.app/)
 
 ## How it Works
 
