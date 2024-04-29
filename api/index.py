@@ -49,18 +49,14 @@ def balance_chemical_equation(equation):
     for element in elements:
         left_count = 0
         right_count = 0
-        for compound in left:
+        for i, compound in enumerate(left):
             count = compound.count(element)
             if count > 0:
-                for i, coeff in enumerate(coefficients[:len(left)]):
-                    if compound == left[i]:
-                        left_count += coeff * count
-        for compound in right:
+                left_count += coefficients[i] * count
+        for i, compound in enumerate(right):
             count = compound.count(element)
             if count > 0:
-                for i, coeff in enumerate(coefficients[len(left):]):
-                    if compound == right[i]:
-                        right_count += coeff * count
+                right_count += coefficients[len(left) + i] * count
         equations.append(Eq(left_count, right_count))
 
     # Add the condition that all coefficients are greater than zero
