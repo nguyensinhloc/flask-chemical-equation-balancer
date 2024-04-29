@@ -68,7 +68,10 @@ def balance_chemical_equation(equation):
         return "Cannot balance the equation."
 
     # Use the first positive solution
-    solution = positive_solution[0]
+    if positive_solution:
+        solution = positive_solution[0]
+    else:
+        return "Cannot balance the equation."
 
     # Generate the balanced equation
     balanced_left = ' + '.join('{}{}'.format(int(solution[coeff]), compound) for coeff, compound in zip(coefficients[:len(left)], left))
