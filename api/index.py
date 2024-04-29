@@ -1,5 +1,6 @@
 from flask import Flask, request, render_template_string
 from sympy import Eq, symbols, solve, Integer
+import re
 
 app = Flask(__name__)
 
@@ -31,21 +32,23 @@ def balance_equation():
         equation_input = request.form['equation']
         try:
             result = balance_chemical_equation(equation_input)
-        except Exception as e:
+        except ValueError as e:
             result = "Error: " + str(e)
     return render_template_string(HTML_PAGE, result=result)
 
 def balance_chemical_equation(equation):
-    # Split the equation into left and right parts
+    # Validate input equation
+    if '=' not in equation:
+        raise ValueError("Invalid equation format. Please use 'A + B = C + D' format.")
     left, right = equation.split('=')
     left = left.split('+')
     right = right.split('+')
 
     # Extract all unique elements
-    elements = set(''.join(filter(str.isalpha, char)) for char in equation)
+    elements = set(re.findall(r'[A-Z][a-z]*', equation))
 
-    # Create symbols for coefficients with integer assumption
-    coefficients = symbols(' '.join(['a{}'.format(i) for i in range(len(left) + len(right))]), integer=True)
+    # Create symbols for coefficients with positive integer assumption
+    coefficients = symbols(' '.join(['a{}'.format(i) for i in range(len(left) + len(right))]), positive=True)
 
     # Create equations based on the element counts
     equations = []
@@ -53,29 +56,26 @@ def balance_chemical_equation(equation):
         left_count = 0
         right_count = 0
         for i, compound in enumerate(left):
-            count = sum(1 for char in compound if char == element)
+            count = compound.count(element)
             if count > 0:
                 left_count += coefficients[i] * count
         for i, compound in enumerate(right):
-            count = sum(1 for char in compound if char == element)
+            count = compound.count(element)
             if count > 0:
                 right_count += coefficients[len(left) + i] * count
         equations.append(Eq(left_count, right_count))
 
-    # Add the condition that all coefficients are greater than zero
-    positive_solution = solve(equations, coefficients, dict=True)
-    positive_solution = [sol for sol in positive_solution if all(coeff > 0 for coeff in sol.values())]
-
-    # If no positive integer solution, return the original equation
-    if not positive_solution:
-        return "Cannot balance the equation."
+    # Solve the equations
+    solutions = solve(equations, coefficients, dict=True)
+    if not solutions:
+        raise ValueError("Cannot balance the equation.")
 
     # Use the first positive solution
-    solution = positive_solution[0]
+    solution = solutions[0]
 
     # Generate the balanced equation
-    balanced_left = ' + '.join('{}{}'.format(int(solution[coeff]), compound) for coeff, compound in zip(coefficients[:len(left)], left))
-    balanced_right = ' + '.join('{}{}'.format(int(solution[coeff]), compound) for coeff, compound in zip(coefficients[len(left):], right))
+    balanced_left = ' + '.join('{}{}'.format(int(solution[coeff]) if int(solution[coeff])!= 1 else '', compound) for coeff, compound in zip(coefficients[:len(left)], left))
+    balanced_right = ' + '.join('{}{}'.format(int(solution[coeff]) if int(solution[coeff])!= 1 else '', compound) for coeff, compound in zip(coefficients[len(left):], right))
     balanced_equation = '{} = {}'.format(balanced_left, balanced_right)
 
     return balanced_equation
