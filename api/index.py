@@ -1,6 +1,7 @@
 from flask import Flask, request, render_template_string
 from sympy import Eq, symbols, solve, Integer
 import re
+import math
 
 app = Flask(__name__)
 
@@ -63,11 +64,21 @@ def balance_chemical_equation(equation):
         raise ValueError("Cannot balance the equation.")
 
     # Use the first positive solution
-    solution = solutions[0]
+    solution = next((s for s in solutions if all(v >= 1 and v.is_Integer for v in s.values())), None)
+    if solution is None:
+        raise ValueError("Cannot balance the equation.")
+
+    # Find the least common multiple of the coefficients
+    lcm = 1
+    for v in solution.values():
+        lcm = lcm * v // math.gcd(lcm, v)
+
+    # Scale the coefficients to the least common multiple
+    solution = {k: v * lcm // k for k, v in solution.items()}
 
     # Generate the balanced equation
-    balanced_left = ' + '.join('{}{}'.format(solution[coeff] if solution[coeff] != 1 else '', compound) for coeff, compound in zip(coefficients[:len(left)], left))
-    balanced_right = ' + '.join('{}{}'.format(solution[coeff] if solution[coeff] != 1 else '', compound) for coeff, compound in zip(coefficients[len(left):], right))
+    balanced_left = ' + '.join('{}{}'.format(solution[coeff] if solution[coeff]!= 1 else '', compound) for coeff, compound in zip(coefficients[:len(left)], left))
+    balanced_right = ' + '.join('{}{}'.format(solution[coeff] if solution[coeff]!= 1 else '', compound) for coeff, compound in zip(coefficients[len(left):], right))
     balanced_equation = '{} = {}'.format(balanced_left, balanced_right)
 
     return balanced_equation
