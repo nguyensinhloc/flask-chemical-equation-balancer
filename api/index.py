@@ -1,5 +1,5 @@
 from flask import Flask, request, render_template_string
-from sympy import Eq, symbols, solve
+from sympy import Eq, symbols, solve, Integer
 
 app = Flask(__name__)
 
@@ -41,8 +41,8 @@ def balance_chemical_equation(equation):
     # Extract all unique elements
     elements = set(''.join(filter(str.isalpha, char)) for char in equation)
 
-    # Create symbols for coefficients
-    coefficients = symbols(' '.join(['a{}'.format(i) for i in range(len(left) + len(right))]))
+    # Create symbols for coefficients with integer assumption
+    coefficients = symbols(' '.join(['a{}'.format(i) for i in range(len(left) + len(right))]), integer=True)
 
     # Create equations based on the element counts
     equations = []
@@ -51,16 +51,20 @@ def balance_chemical_equation(equation):
         right_count = sum(coeff * compound.count(element) for coeff, compound in zip(coefficients[len(left):], right))
         equations.append(Eq(left_count, right_count))
 
-    # Solve the equations
-    solution = solve(equations, coefficients)
+    # Add the condition that all coefficients are greater than zero
+    positive_solution = solve(equations, coefficients, dict=True)
+    positive_solution = [sol for sol in positive_solution if all(coeff > 0 for coeff in sol.values())]
 
-    # If no solution, return the original equation
-    if not solution:
+    # If no positive integer solution, return the original equation
+    if not positive_solution:
         return "Cannot balance the equation."
 
+    # Use the first positive solution
+    solution = positive_solution[0]
+
     # Generate the balanced equation
-    balanced_left = ' + '.join('{}{}'.format(solution[coeff], compound) for coeff, compound in zip(coefficients[:len(left)], left))
-    balanced_right = ' + '.join('{}{}'.format(solution[coeff], compound) for coeff, compound in zip(coefficients[len(left):], right))
+    balanced_left = ' + '.join('{}{}'.format(int(solution[coeff]), compound) for coeff, compound in zip(coefficients[:len(left)], left))
+    balanced_right = ' + '.join('{}{}'.format(int(solution[coeff]), compound) for coeff, compound in zip(coefficients[len(left):], right))
     balanced_equation = '{} = {}'.format(balanced_left, balanced_right)
 
     return balanced_equation
