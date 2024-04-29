@@ -38,6 +38,9 @@ def balance_equation():
     return render_template_string(HTML_PAGE, result=result)
 
 def balance_chemical_equation(equation):
+    # Remove spaces and parentheses from the input equation
+    equation = equation.replace(' ', '').replace('(', '').replace(')', '')
+
     # Validate input equation
     if '=' not in equation:
         raise ValueError("Invalid equation format. Please use 'A + B = C + D' format.")
@@ -45,21 +48,28 @@ def balance_chemical_equation(equation):
     left = left.split('+')
     right = right.split('+')
 
-    # Extract all unique elements
+    # Extract all unique elements and coefficients
     elements = set(re.findall(r'([A-Z][a-z]?)(\d*)', equation))
+    coefficients = {}
+    for compound in left + right:
+        for el, count in re.findall(r'([A-Z][a-z]?)(\d*)', compound):
+            if el not in coefficients:
+                coefficients[el] = int(count or 1)
+            else:
+                coefficients[el] += int(count or 1)
 
     # Create symbols for coefficients with positive integer assumption
-    coefficients = symbols(' '.join(['a{}'.format(i) for i in range(len(left) + len(right))]), positive=True)
+    coefficients_symbols = symbols(' '.join(['a{}'.format(i) for i in range(len(left) + len(right))]), positive=True)
 
     # Create equations based on the element counts
     equations = []
     for element, _ in elements:
-        left_count = sum(coefficients[i] * int(count or 1) for i, compound in enumerate(left) for el, count in re.findall(r'([A-Z][a-z]?)(\d*)', compound) if el == element)
-        right_count = sum(coefficients[len(left) + i] * int(count or 1) for i, compound in enumerate(right) for el, count in re.findall(r'([A-Z][a-z]?)(\d*)', compound) if el == element)
+        left_count = sum(coefficients_symbols[i] * coefficients[element] for i, compound in enumerate(left) for el, count in re.findall(r'([A-Z][a-z]?)(\d*)', compound) if el == element)
+        right_count = sum(coefficients_symbols[len(left) + i] * coefficients[element] for i, compound in enumerate(right) for el, count in re.findall(r'([A-Z][a-z]?)(\d*)', compound) if el == element)
         equations.append(Eq(left_count, right_count))
 
     # Solve the equations
-    solutions = solve(equations, coefficients, dict=True)
+    solutions = solve(equations, coefficients_symbols, dict=True)
     if not solutions:
         raise ValueError("Cannot balance the equation.")
 
@@ -77,8 +87,8 @@ def balance_chemical_equation(equation):
     solution = {k: v * lcm // k for k, v in solution.items()}
 
     # Generate the balanced equation
-    balanced_left = ' + '.join('{}{}'.format(solution[coeff] if solution[coeff]!= 1 else '', compound) for coeff, compound in zip(coefficients[:len(left)], left))
-    balanced_right = ' + '.join('{}{}'.format(solution[coeff] if solution[coeff]!= 1 else '', compound) for coeff, compound in zip(coefficients[len(left):], right))
+    balanced_left = ' + '.join('{}{}'.format(solution[coeff] if solution[coeff]!= 1 else '', compound) for coeff, compound in zip(coefficients_symbols[:len(left)], left))
+    balanced_right = ' + '.join('{}{}'.format(solution[coeff] if solution[coeff]!= 1 else '', compound) for coeff, compound in zip(coefficients_symbols[len(left):], right))
     balanced_equation = '{} = {}'.format(balanced_left, balanced_right)
 
     return balanced_equation
