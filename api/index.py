@@ -50,11 +50,11 @@ def balance_chemical_equation(equation):
         left_count = 0
         right_count = 0
         for i, compound in enumerate(left):
-            count = compound.count(element)
+            count = sum(1 for char in compound if char == element)
             if count > 0:
                 left_count += coefficients[i] * count
         for i, compound in enumerate(right):
-            count = compound.count(element)
+            count = sum(1 for char in compound if char == element)
             if count > 0:
                 right_count += coefficients[len(left) + i] * count
         equations.append(Eq(left_count, right_count))
